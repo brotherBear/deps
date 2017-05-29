@@ -7,7 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.regex.Pattern;
+import java.util.Stack;
 
 import org.neo4j.driver.v1.AuthTokens;
 import org.neo4j.driver.v1.Driver;
@@ -19,19 +19,33 @@ import org.neo4j.driver.v1.StatementResult;
 public class Main {
 
     static class Dependency {
-        String group;
-        String artifact;
-        String packaging;
-        String version;
-        String scope;
-        
-        List<Dependency> children; 
+        private String group;
+        private String artifact;
+        private String packaging;
+        private String version;
+        private String scope;
+
+        private Dependency usedBy;
+
+        void usedBy(Dependency other) {
+            if (this.usedBy == null)
+                this.usedBy = other;
+        }
+
+        Dependency(Dependency parent, String... properties) {
+            this(properties);
+            if (parent != null) {
+                usedBy = parent;
+            }
+
+        }
 
         Dependency(String[] properties) {
             for (int i = 0; i < properties.length; i++) {
                 switch (i) {
                 case 0:
-                    group = properties[i].replaceAll("\\[INFO\\] ", "");
+                    String stripped = properties[i].replaceAll("\\+- ", "");
+                    group = stripped;
                     break;
                 case 1:
                     artifact = properties[i];
@@ -49,7 +63,25 @@ public class Main {
                     break;
                 }
             }
-            children = new ArrayList<>();
+        }
+
+        public String insert() {
+            return String.format("Merge (a:Package {group: '%s', artifact: '%s', version: '%s'})", group, artifact,
+                    version);
+        }
+
+        public String connect() {
+            String returnval = "";
+            if (usedBy != null) {
+                String createRelation = String.format("Match(a%s), (b%s)\nMerge (a) -[:%s]->(b) ", usedBy.matcher(),
+                        this.matcher(), this.scope);
+                returnval = createRelation;
+            }
+            return returnval;
+        }
+
+        public String matcher() {
+            return String.format(":Package {group: '%s', artifact: '%s', version: '%s'}", group, artifact, version);
         }
 
         public String toString() {
@@ -57,23 +89,63 @@ public class Main {
         }
     }
 
+    static private final Driver driver = GraphDatabase.driver("bolt://localhost", AuthTokens.basic("neo4j", "eleva2r"));
+
     public static void main(String[] args) {
         List<String> lines = readFile();
-        String pattern = "";
-        Pattern p = Pattern.compile(pattern);
+        Stack<Dependency> stack = new Stack<Dependency>();
+        int level = 0;
 
         for (String line : lines) {
             if (line.startsWith("[INFO] --"))
                 continue;
+            if (line.contains("BUILD SUCCESS"))
+                break;
+
+            String stripped = line.replaceFirst("\\[INFO\\] ", "");
+
+            processLine(stripped, stack, level, null);
+
+        }
+
+        driver.close();
+
+    }
+
+    private static void processLine(String line, Stack<Dependency> stack, int level, Dependency root) {
+        if (!stack.isEmpty() && stack.size() > level) {
+            root = stack.get(level);
+        }
+        if (line.startsWith("+- ")) {
+            processLine(line.replaceFirst("\\+- ", ""), stack, level+1, root);
+            stack.pop();
+        } else if (line.startsWith("|  ")) {
+            processLine(line.replaceFirst("\\|  ", ""), stack, level+1, root);
+        } else if (line.startsWith("\\- ")) {
+            processLine(line.replaceFirst("\\\\- ", ""), stack, level+1, root);
+//            stack.pop();
+        } else if (line.startsWith("   ")) {
+            processLine(line.trim(), stack, level+1, root);
+        } else {
             String[] chops = line.split(":");
+
             if (chops != null && chops.length > 3) {
-                Dependency dependency = new Dependency(chops);
-                System.out.println(dependency);
+                
+                Dependency dependency = new Dependency(root, chops);
+                stack.push(dependency);
+                System.out.println(dependency.insert());
+                System.out.println(dependency.connect());
+                pushToNeo(dependency);
             }
         }
 
-        // pushToNeo();
+    }
 
+    private static void pushToNeo(Dependency dep) {
+        Session session = driver.session();
+        session.run(dep.insert());
+        if (dep.connect() != "") session.run(dep.connect());
+        session.close();
     }
 
     private static List<String> readFile() {
@@ -88,25 +160,6 @@ public class Main {
             System.err.format("IOException: %s%n", x);
         }
         return lines;
-    }
-
-    private static void pushToNeo() {
-        Driver driver = GraphDatabase.driver("bolt://localhost", AuthTokens.basic("neo4j", "eleva2r"));
-
-        Session session = driver.session();
-
-        session.run("Create (a:Person {name: 'Arthur', title: 'King'})");
-
-        StatementResult result = session
-                .run("Match (a:Person) where a.name = 'Arthur' return a.name as name, a.title as title");
-
-        while (result.hasNext()) {
-            Record record = result.next();
-            System.out.println(record.get("title").asString() + " " + record.get("name").asString());
-        }
-
-        session.close();
-        driver.close();
     }
 
 }
