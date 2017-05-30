@@ -125,11 +125,8 @@ public class Main {
             while(stack.size() > nextLevel)
                 stack.pop();
             processLine(line.replaceFirst("\\\\- ", ""), stack, nextLevel, root);
-//            stack.pop();
         } else if (line.startsWith("|  ")) {
             processLine(line.replaceFirst("\\|  ", ""), stack, nextLevel, root);
-//            while(stack.size() > nextLevel)
-//                stack.pop();
         } else if (line.startsWith("   ")) {
             processLine(line.trim(), stack, nextLevel, root);
         } else {
