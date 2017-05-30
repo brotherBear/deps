@@ -116,16 +116,22 @@ public class Main {
         if (!stack.isEmpty() && stack.size() > level) {
             root = stack.get(level);
         }
+        int nextLevel = level+1;
         if (line.startsWith("+- ")) {
-            processLine(line.replaceFirst("\\+- ", ""), stack, level+1, root);
-            stack.pop();
-        } else if (line.startsWith("|  ")) {
-            processLine(line.replaceFirst("\\|  ", ""), stack, level+1, root);
+            while(stack.size() > nextLevel)
+                stack.pop();
+            processLine(line.replaceFirst("\\+- ", ""), stack, nextLevel, root);
         } else if (line.startsWith("\\- ")) {
-            processLine(line.replaceFirst("\\\\- ", ""), stack, level+1, root);
+            while(stack.size() > nextLevel)
+                stack.pop();
+            processLine(line.replaceFirst("\\\\- ", ""), stack, nextLevel, root);
 //            stack.pop();
+        } else if (line.startsWith("|  ")) {
+            processLine(line.replaceFirst("\\|  ", ""), stack, nextLevel, root);
+//            while(stack.size() > nextLevel)
+//                stack.pop();
         } else if (line.startsWith("   ")) {
-            processLine(line.trim(), stack, level+1, root);
+            processLine(line.trim(), stack, nextLevel, root);
         } else {
             String[] chops = line.split(":");
 
@@ -150,7 +156,7 @@ public class Main {
 
     private static List<String> readFile() {
         List<String> lines = new ArrayList<>();
-        Path path = FileSystems.getDefault().getPath("./src/main/resources", "dep-tree.txt");
+        Path path = FileSystems.getDefault().getPath("./src/main/resources", "dep-tree-wc.txt");
         try (BufferedReader reader = Files.newBufferedReader(path)) {
             String line = null;
             while ((line = reader.readLine()) != null) {
